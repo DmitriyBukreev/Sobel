@@ -9,7 +9,7 @@ dirs:
 	@mkdir -p obj bin
 
 sobel: precompiled.h.pch $(OBJ)
-	gcc $(LDFLAGS) bin/$@ $(OBJ) -lnetpbm
+	gcc $(LDFLAGS) bin/$@ $(OBJ) -lnetpbm -lm
 	#------------------------------------------
 
 $(OBJ): obj/%.o: src/%.c
