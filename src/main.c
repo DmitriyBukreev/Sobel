@@ -58,8 +58,10 @@ int main(int argn, char **argv)
 	pthread_t *threads;
 	// Error code from pthread
 	int result;
-	int threadnum = 4;
+	int threadnum = 1;
 	int sizeofsubstripe;
+	time_t st_time, end_time;
+	int res_time;
 	// Arrays for images in RAM
 	tuple **in_img, **out_img;
 
@@ -97,6 +99,7 @@ int main(int argn, char **argv)
 		if (j != 0)
 			args[j].y0 -= 2;
 	}
+	res_time = 0;
 	for (int y = 0; y < inpam.height; y += rownum) {
 		if (rownum > (inpam.height - y)) {
 			sizeofsubstripe = ceil((double)rownum/threadnum);
@@ -114,8 +117,9 @@ int main(int argn, char **argv)
 			}
 		}
 		fprintf(stderr, "%i more rows left\n", inpam.height - y);
-		// Start of processing
 		pnm_readpamstripe(&inpam, in_img, rownum);
+		// Start of processing
+		st_time = time(NULL);
 		for (int i = 1; i < threadnum; i++) {
 			result = pthread_create(&threads[i], NULL,
 			sobel_thread, &args[i]);
@@ -133,12 +137,14 @@ int main(int argn, char **argv)
 			}
 		}
 		// End of processing
+		end_time = time(NULL);
+		res_time += difftime(end_time, st_time);
 		pnm_writepamstripe(&outpam, out_img, rownum);
 	}
 	pnm_freepamstripe(inpam, in_img, savedrownum);
 	pnm_freepamstripe(inpam, out_img, savedrownum);
 	free(args);
 	free(threads);
-
+	fprintf(stderr, "Time estimation: %i\n", res_time);
 	return 0;
 }
