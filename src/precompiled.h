@@ -1,6 +1,7 @@
 #include <errno.h>
 #include <math.h>
 #include <pam.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "pamstripe.h"
