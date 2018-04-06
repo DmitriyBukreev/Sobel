@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include "pamstripe.h"
 
 #ifndef HANDLE_ERROR

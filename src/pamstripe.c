@@ -12,7 +12,7 @@ void pnm_readpamstripe(struct pam *info, tuple **stripe, int rows)
 		pnm_readpamrow(info, stripe[i]);
 }
 
-void pnm_writepamstripe(struct pam *info, const tuple **stripe, int rows)
+void pnm_writepamstripe(struct pam *info, tuple **stripe, int rows)
 {
 	for (int i = 0; i < rows; i++)
 		pnm_writepamrow(info, stripe[i]);

@@ -1,7 +1,16 @@
 #include "precompiled.h"
 
+struct arg_struct {
+	tuple **src;
+	tuple **dst;
+	int x0;
+	int y0;
+	int xf;
+	int yf;
+};
+
 #define KSIZE 3
-void sobel(tuple * *src, tuple * *dst, int x0, int y0,
+void sobel(tuple **src, tuple **dst, int x0, int y0,
 	int xf, int yf)
 {
 	int x, y, i, j;
@@ -24,44 +33,112 @@ void sobel(tuple * *src, tuple * *dst, int x0, int y0,
 		}
 }
 
+void *sobel_thread(void *in_args)
+{
+	struct arg_struct *args = in_args;
+
+	sobel(args->src, args->dst, args->x0, args->y0,
+		args->xf, args->yf);
+	pthread_exit(NULL);
+}
+
 // 0.5 GB is enough ;)
 #define MAXMEM 500000000
 int main(int argn, char **argv)
 {
+	// Size of one row
 	unsigned long int sizeofrow;
+	// Number of rows to allocate in memory
 	int rownum, savedrownum;
+	// Information for pam functions
 	struct pam inpam, outpam;
-
+	// Arguments for threads
+	struct arg_struct *args;
+	// Thread ID array
+	pthread_t *threads;
+	// Error code from pthread
+	int result;
+	int threadnum = 4;
+	int sizeofsubstripe;
+	// Arrays for images in RAM
 	tuple **in_img, **out_img;
 
+	// Initialization of libnetpbm
 	pm_init(argv[0], 0);
+	// Reading header and saving it in the file
 	pnm_readpaminit(stdin, &inpam, sizeof(inpam));
 	outpam = inpam; outpam.file = stdout;
 	pnm_writepaminit(&outpam);
+	// Calculating number of rows to fit
+	// MAXMEM limitation
 	sizeofrow = inpam.width*inpam.depth*sizeof(sample);
 	rownum = ceil(MAXMEM/sizeofrow);
 
-	fprintf(stderr, "Memory provided = %i bytes\t", MAXMEM);
-	fprintf(stderr, "Size of row = %lu bytes\n", sizeofrow);
-	fprintf(stderr, "Image height= %i\t", inpam.height);
-	fprintf(stderr, "Image separated into %f stripes\n",
-		ceil(inpam.height*sizeofrow/MAXMEM));
-	fprintf(stderr, "Each stripe has %i rows\n",
-		rownum);
-
+	// Allocating memory for input and output stripes
 	in_img = pnm_allocpamstripe(inpam, rownum);
 	out_img = pnm_allocpamstripe(outpam, rownum);
+	// Saving rownum to free memory further
 	savedrownum = rownum;
+	// Processing image stripe by stripe
+	args = malloc(sizeof(struct arg_struct) * threadnum);
+	threads = malloc(sizeof(pthread_t) * threadnum);
+
+	// Separating stripe into substripes for each thread
+	sizeofsubstripe = ceil((double)rownum/threadnum);
+	for (int i = 0, j = 0; i < rownum; i += sizeofsubstripe, j++) {
+		args[j].src = in_img;
+		args[j].dst = out_img;
+		args[j].x0 = 0;
+		args[j].xf = inpam.width;
+		args[j].yf = i + sizeofsubstripe;
+		args[j].y0 = i;
+		if (args[j].yf > rownum)
+			args[j].yf = i + (rownum - args[j].y0);
+		if (j != 0)
+			args[j].y0 -= 2;
+	}
 	for (int y = 0; y < inpam.height; y += rownum) {
-		if (rownum > (inpam.height - y))
+		if (rownum > (inpam.height - y)) {
+			sizeofsubstripe = ceil((double)rownum/threadnum);
+			// Last stripe maybe of a different height
 			rownum = inpam.height - y;
+			// Recalculating substripes
+			for (int i = 0, j = 0; i < rownum;
+				i += sizeofsubstripe, j++) {
+				args[j].y0 = i;
+				args[j].yf = i + sizeofsubstripe;
+				if (args[j].yf > rownum)
+					args[j].yf = i + (rownum - args[j].y0);
+				if (j != 0)
+					args[j].y0 -= 2;
+			}
+		}
 		fprintf(stderr, "%i more rows left\n", inpam.height - y);
+		// Start of processing
 		pnm_readpamstripe(&inpam, in_img, rownum);
-		sobel(in_img, out_img, 0, 0, inpam.width, rownum);
+		for (int i = 1; i < threadnum; i++) {
+			result = pthread_create(&threads[i], NULL,
+			sobel_thread, &args[i]);
+			if (result != 0) {
+				perror("Thread creation failed\n");
+				exit(EXIT_FAILURE);
+			}
+		}
+		sobel(in_img, out_img, 0, 0, args[0].xf, args[0].yf);
+		for (int i = 1; i < threadnum; i++) {
+			result = pthread_join(threads[i], NULL);
+			if (result != 0) {
+				perror("Thread join failed\n");
+				exit(EXIT_FAILURE);
+			}
+		}
+		// End of processing
 		pnm_writepamstripe(&outpam, out_img, rownum);
 	}
 	pnm_freepamstripe(inpam, in_img, savedrownum);
 	pnm_freepamstripe(inpam, out_img, savedrownum);
+	free(args);
+	free(threads);
 
 	return 0;
 }
