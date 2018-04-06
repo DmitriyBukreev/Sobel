@@ -1,0 +1,5 @@
+*.pch
+*.EXPERIMENTAL-checkpatch-fixes
+img/
+obj/
+bin/
