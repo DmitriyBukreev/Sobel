@@ -42,8 +42,8 @@ void *sobel_thread(void *in_args)
 	pthread_exit(NULL);
 }
 
-// 0.5 GB is enough ;)
-#define MAXMEM 500000000
+// 250 MB is enough ;)
+#define MAXMEM 250000000
 int main(int argn, char **argv)
 {
 	// Size of one row
@@ -60,15 +60,52 @@ int main(int argn, char **argv)
 	int result;
 	int threadnum = 1;
 	int sizeofsubstripe;
+	// Variables for time estimation
 	time_t st_time, end_time;
 	int res_time;
+	// Variables for argv processing
+	// Flag validator of input
+	char f_wrong;
+	// stdin, file, etc.
+	FILE *in_stream;
+	// Result from getopt
+	int opt;
+	// Number of options provided
+	char has_option;
 	// Arrays for images in RAM
 	tuple **in_img, **out_img;
+
+	// Processing arguments
+	in_stream = stdin;
+	has_option = f_wrong = 0;
+	while ((opt = getopt(argn, argv, "j:")) != -1) {
+		switch (opt) {
+		case 'j':
+			threadnum = atoi(optarg);
+			has_option += 2;
+			if (threadnum < 1) {
+				fprintf(stderr, "Wrong number of threads\n");
+				exit(EXIT_FAILURE);
+			}
+			fprintf(stderr, "Threadnum: %i\n", threadnum);
+			break;
+		case '?':
+			f_wrong = 1;
+		}
+	}
+	if (f_wrong != 0) {
+		fprintf(stderr, "Wrong argumens\n");
+		exit(EXIT_FAILURE);
+	}
+	if (argn > (has_option + 1)) {
+		in_stream = fopen(argv[has_option + 1], "rb");
+		HANDLE_ERROR(in_stream, NULL);
+	}
 
 	// Initialization of libnetpbm
 	pm_init(argv[0], 0);
 	// Reading header and saving it in the file
-	pnm_readpaminit(stdin, &inpam, sizeof(inpam));
+	pnm_readpaminit(in_stream, &inpam, sizeof(inpam));
 	outpam = inpam; outpam.file = stdout;
 	pnm_writepaminit(&outpam);
 	// Calculating number of rows to fit
@@ -103,7 +140,7 @@ int main(int argn, char **argv)
 	for (int y = 0; y < inpam.height; y += rownum) {
 		if (rownum > (inpam.height - y)) {
 			sizeofsubstripe = ceil((double)rownum/threadnum);
-			// Last stripe maybe of a different height
+			// Last stripe may be of a different height
 			rownum = inpam.height - y;
 			// Recalculating substripes
 			for (int i = 0, j = 0; i < rownum;
@@ -116,7 +153,6 @@ int main(int argn, char **argv)
 					args[j].y0 -= 2;
 			}
 		}
-		fprintf(stderr, "%i more rows left\n", inpam.height - y);
 		pnm_readpamstripe(&inpam, in_img, rownum);
 		// Start of processing
 		st_time = time(NULL);
