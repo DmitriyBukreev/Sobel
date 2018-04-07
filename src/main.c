@@ -72,6 +72,8 @@ int main(int argn, char **argv)
 	int opt;
 	// Number of options provided
 	char has_option;
+	// Fifo ID
+	int fifo;
 	// Arrays for images in RAM
 	tuple **in_img, **out_img;
 
@@ -87,7 +89,6 @@ int main(int argn, char **argv)
 				fprintf(stderr, "Wrong number of threads\n");
 				exit(EXIT_FAILURE);
 			}
-			fprintf(stderr, "Threadnum: %i\n", threadnum);
 			break;
 		case '?':
 			f_wrong = 1;
@@ -182,5 +183,10 @@ int main(int argn, char **argv)
 	free(args);
 	free(threads);
 	fprintf(stderr, "Time estimation: %i\n", res_time);
+	// For stats collecting
+	fifo = open("/tmp/stat_fifo", O_WRONLY);
+	HANDLE_ERROR(fifo, -1);
+	HANDLE_ERROR(write(fifo, &res_time, 4), -1);
+	HANDLE_ERROR(close(fifo), -1);
 	return 0;
 }
