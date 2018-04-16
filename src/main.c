@@ -14,7 +14,6 @@ void sobel(tuple **src, tuple **dst, int x0, int y0,
 	int xf, int yf)
 {
 	int x, y, i, j;
-	// Take the other kernel?
 	double kernel[KSIZE][KSIZE] = {
 		{-1, 0, 1},
 		{-2, 0, 2},
@@ -61,8 +60,9 @@ int main(int argn, char **argv)
 	int threadnum = 1;
 	int sizeofsubstripe;
 	// Variables for time estimation
-	time_t st_time, end_time;
-	int res_time;
+	struct timespec st_time;
+	struct timespec end_time;
+	long int res_time;
 	// Variables for argv processing
 	// Flag validator of input
 	char f_wrong;
@@ -105,10 +105,12 @@ int main(int argn, char **argv)
 
 	// Initialization of libnetpbm
 	pm_init(argv[0], 0);
+
 	// Reading header and saving it in the file
 	pnm_readpaminit(in_stream, &inpam, sizeof(inpam));
 	outpam = inpam; outpam.file = stdout;
 	pnm_writepaminit(&outpam);
+
 	// Calculating number of rows to fit
 	// MAXMEM limitation
 	sizeofrow = inpam.width*inpam.depth*sizeof(sample);
@@ -117,9 +119,11 @@ int main(int argn, char **argv)
 	// Allocating memory for input and output stripes
 	in_img = pnm_allocpamstripe(inpam, rownum);
 	out_img = pnm_allocpamstripe(outpam, rownum);
+
 	// Saving rownum to free memory further
 	savedrownum = rownum;
-	// Processing image stripe by stripe
+
+	// Allocating memory for arguments and threads arrays
 	args = malloc(sizeof(struct arg_struct) * threadnum);
 	threads = malloc(sizeof(pthread_t) * threadnum);
 
@@ -137,12 +141,20 @@ int main(int argn, char **argv)
 		if (j != 0)
 			args[j].y0 -= 2;
 	}
+
 	res_time = 0;
+	// Processing image stripe by stripe
 	for (int y = 0; y < inpam.height; y += rownum) {
+
+		// In case of the last stripe has a different size
 		if (rownum > (inpam.height - y)) {
-			sizeofsubstripe = ceil((double)rownum/threadnum);
-			// Last stripe may be of a different height
+
+			// Calculating new size of stipe
 			rownum = inpam.height - y;
+
+			// Calculating new size of substripe
+			sizeofsubstripe = ceil((double)rownum/threadnum);
+
 			// Recalculating substripes
 			for (int i = 0, j = 0; i < rownum;
 				i += sizeofsubstripe, j++) {
@@ -154,9 +166,16 @@ int main(int argn, char **argv)
 					args[j].y0 -= 2;
 			}
 		}
+
+
 		pnm_readpamstripe(&inpam, in_img, rownum);
+
+		// Getting time of start
+		clock_gettime(CLOCK_REALTIME, &st_time);
+
 		// Start of processing
-		st_time = time(NULL);
+		//
+		// Processing in additional threads
 		for (int i = 1; i < threadnum; i++) {
 			result = pthread_create(&threads[i], NULL,
 			sobel_thread, &args[i]);
@@ -165,7 +184,10 @@ int main(int argn, char **argv)
 				exit(EXIT_FAILURE);
 			}
 		}
+		// Processing in main thread
 		sobel(in_img, out_img, 0, 0, args[0].xf, args[0].yf);
+
+		// Waiting for the moment when every thread is finished
 		for (int i = 1; i < threadnum; i++) {
 			result = pthread_join(threads[i], NULL);
 			if (result != 0) {
@@ -173,20 +195,24 @@ int main(int argn, char **argv)
 				exit(EXIT_FAILURE);
 			}
 		}
+		//
 		// End of processing
-		end_time = time(NULL);
-		res_time += difftime(end_time, st_time);
+
+		// Getting time of finish
+		clock_gettime(CLOCK_REALTIME, &end_time);
+		// Calculating total time
+		res_time += (end_time.tv_sec - st_time.tv_sec) * 1000000000
+			+ (end_time.tv_nsec - st_time.tv_nsec);
+
 		pnm_writepamstripe(&outpam, out_img, rownum);
 	}
+
+	// Releasing allocated memory
 	pnm_freepamstripe(inpam, in_img, savedrownum);
 	pnm_freepamstripe(inpam, out_img, savedrownum);
 	free(args);
 	free(threads);
-	fprintf(stderr, "Time estimation: %i\n", res_time);
-	// For stats collecting
-	fifo = open("/tmp/stat_fifo", O_WRONLY);
-	HANDLE_ERROR(fifo, -1);
-	HANDLE_ERROR(write(fifo, &res_time, 4), -1);
-	HANDLE_ERROR(close(fifo), -1);
+
+	fprintf(stderr, "%li ns\n", res_time);
 	return 0;
 }

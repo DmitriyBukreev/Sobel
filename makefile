@@ -24,3 +24,6 @@ $(OBJ): obj/%.o: src/%.c
 precompiled.h.pch: src/precompiled.h
 	gcc $< -o $@
 	#------------------------------------------
+
+clean:
+	rm -rf ./obj ./bin ./precompiled.h.pch
