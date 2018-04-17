@@ -214,5 +214,13 @@ int main(int argn, char **argv)
 	free(threads);
 
 	fprintf(stderr, "%li ns\n", res_time);
+
+	// Outputing statistics
+	fifo = open("/tmp/stat_fifo", O_WRONLY);
+	if (fifo != -1) {
+		HANDLE_ERROR(write(fifo, &res_time, sizeof(res_time)), -1);
+		HANDLE_ERROR(close(fifo), -1);
+	}
+
 	return 0;
 }
